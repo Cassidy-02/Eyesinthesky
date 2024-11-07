@@ -2,6 +2,7 @@ package com.example.eyesinthesky
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.widget.Button
@@ -37,13 +38,10 @@ class Setting : AppCompatActivity() {
         }
 
         save.setOnClickListener{
-            val maxDistance = distanceEditText.toString().toInt()
-            with(preferences.edit()){
-                putInt("maxDistance", maxDistance)
-                apply()
-            }
-            Toast.makeText(this,"Settings Saved", Toast.LENGTH_SHORT).show()
 
+            Toast.makeText(this,"Settings Saved", Toast.LENGTH_SHORT).show()
+            val intent = Intent(this,Hotspots::class.java)
+            startActivity(intent)
         }
 
     }
