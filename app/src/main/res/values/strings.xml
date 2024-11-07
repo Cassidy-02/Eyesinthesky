@@ -5,4 +5,9 @@
     <string name="register">Register</string>
     <string name="already_have_an_account">Already have an account?</string>
     <string name="login">Login</string>
+    <string name="save_observation">Save Observation</string>
+    <string name="view_observations">View Observations</string>
+    <string name="distance_10_km">Distance: 10 km</string>
+    <string name="enter_notes">Enter Notes</string>
+    <string name="enter_bird_name">Enter Bird Name</string>
 </resources>
