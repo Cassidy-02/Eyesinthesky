@@ -15,18 +15,12 @@
         android:gravity="center"
         android:orientation="vertical">
 
-    <ImageView
-        android:layout_width="160dp"
-        android:layout_height="160dp"
-        android:src="@drawable/icon_account_circle"/>
+        <ImageView
+            android:layout_width="160dp"
+            android:layout_height="160dp"
+            android:src="@drawable/icon" />
 
-    <ImageView
-        android:id="@+id/google_btn"
-        android:layout_width="64dp"
-        android:layout_height="64dp"
-        android:layout_margin="16dp"
-        android:src="@drawable/google_icon"/>
-    <EditText
+        <EditText
         android:id="@+id/username_input"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

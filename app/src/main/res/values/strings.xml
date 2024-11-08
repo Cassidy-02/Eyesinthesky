@@ -10,4 +10,5 @@
     <string name="distance_10_km">Distance: 10 km</string>
     <string name="enter_notes">Enter Notes</string>
     <string name="enter_bird_name">Enter Bird Name</string>
+    <string name="sign_in_with_google">Sign in with Google</string>
 </resources>
