@@ -1,5 +1,3 @@
-@file:Suppress("UNREACHABLE_CODE")
-
 package com.example.eyesinthesky
 
 import android.Manifest
@@ -19,15 +17,23 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.MapView
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.ValueEventListener
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
 
 
 class Hotspots : AppCompatActivity(), OnMapReadyCallback {
@@ -40,9 +46,11 @@ class Hotspots : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var viewObservationsButton: Button
     private val apiKey = "AIzaSyDpDcJ4mf7EdS_nJOzYJCgKDMHJFSS1O5Y"
 
+    private lateinit var database: DatabaseReference
+
     private var selectedDistance: Int = 10  // Default distance: 10 km
 
-    private lateinit var currentLocation: LatLng // Set this to user's current location
+    private var currentLocation: LatLng? = null // Set this to user's current location
 
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
@@ -56,18 +64,37 @@ class Hotspots : AppCompatActivity(), OnMapReadyCallback {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_hotspots)
 
+        database = FirebaseDatabase.getInstance().reference
+
+
         mapView = findViewById(R.id.mapView)
         birdNameEditText = findViewById(R.id.birdNameEditText)
         notesEditText = findViewById(R.id.notesEditText)
         saveObservationButton = findViewById(R.id.saveObservationButton)
         viewObservationsButton = findViewById(R.id.viewObservationsButton)
         mapView.onCreate(savedInstanceState)
-        mapView.getMapAsync {map ->
+        mapView.getMapAsync { map ->
             googleMap = map
             setupMapListeners()
+            enableLocation() //Enable location on the map
         }
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
+        // Request location permissions if not granted
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                LOCATION_PERMISSION_REQUEST_CODE
+            )
+        } else {
+            getCurrentLocation(this)  // Fetch the location if permissions are already granted
+        }
 
 
         val distanceSeekBar = findViewById<SeekBar>(R.id.distanceSeekBar)
@@ -88,21 +115,69 @@ class Hotspots : AppCompatActivity(), OnMapReadyCallback {
 
             }
         })
-        var currentLocation: Location? = null
+
 
         saveObservationButton.setOnClickListener {
             val birdName = birdNameEditText.text.toString()
             val notes = notesEditText.text.toString()
-            if (currentLocation == null) {
+            if (currentLocation != null) {
                 saveObservation(birdName, notes, currentLocation!!)
-            } else{
+            } else {
                 //The case where currentLocation is null
-                Toast.makeText(this,"Location not available", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Location not available", Toast.LENGTH_SHORT).show()
             }
         }
 
         viewObservationsButton.setOnClickListener {
-            fetchAllObservations()
+            val intent = Intent(this, ViewObservations::class.java)
+            startActivity(intent)
+            //fetchAllObservations()
+        }
+
+        val bottomNavigationView = findViewById<BottomNavigationView>(R.id.bottom_navigation)
+        // Set the selected item in the bottom navigation bar
+        bottomNavigationView.selectedItemId = R.id.navigation_home
+
+        // Handle bottom navigation item clicks
+        bottomNavigationView.setOnNavigationItemSelectedListener { menuItem ->
+            when (menuItem.itemId) {
+                R.id.navigation_home -> {
+                    startActivity(Intent(this, MainActivity::class.java))
+                    true
+                } // Already on the Home screen
+                R.id.navigation_settings -> {
+                    startActivity(Intent(this, Login::class.java))
+                    true
+                }
+
+                R.id.navigation_notes -> {
+                    startActivity(Intent(this, ViewObservations::class.java))
+                    true
+                }
+
+                R.id.navigation_map -> {
+                    startActivity(Intent(this, Hotspots::class.java))
+                    true
+                }
+
+                else -> false
+            }
+        }
+    }
+
+    // Override permission request result
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == LOCATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                getCurrentLocation(this)  // Fetch location once permissions are granted
+            } else {
+                Toast.makeText(this, "Location permission denied", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -116,21 +191,22 @@ class Hotspots : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private fun fetchAllObservations() {
-        CoroutineScope(Dispatchers.IO).launch {
-            val observations = BirdObservationDatabase.getDatabase(applicationContext).birdObservations().getAllObservations()
-            withContext(Dispatchers.Main) {
-                displayObservationsOnMap(observations)
-            }
-        }
+        val intent = Intent(this, ViewObservations::class.java)
+        startActivity(intent)
     }
 
     private fun displayObservationsOnMap(observations: List<BirdObservation>) {
         googleMap.clear() // Clear existing markers
-        for (observation in observations) {
-            val position = LatLng(observation.latitude, observation.longitude)
-            googleMap.addMarker(
-                MarkerOptions().position(position).title(observation.birdName)
-            )
+        if (observations.isEmpty()) {
+            val bounds = LatLngBounds.builder()
+            observations.forEach { observation ->
+                val position = LatLng(observation.latitude, observation.longitude)
+                bounds.include(position)
+                googleMap.addMarker(
+                    MarkerOptions().position(position).title(observation.birdName)
+                )
+            }
+            googleMap.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(), 100))
         }
     }
 
@@ -141,19 +217,20 @@ class Hotspots : AppCompatActivity(), OnMapReadyCallback {
             longitude = currentLocation.longitude,
             notes = notes
         )
+        //reference for Firebase
+        val observationId = database.child("observations").push().key
 
-        CoroutineScope(Dispatchers.IO).launch {
-            // Insert observation into Room Database
-            try {
-                BirdObservationDatabase.getDatabase(applicationContext).birdObservations().insertObservation(observation)
-
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(applicationContext, "Bird observation saved!", Toast.LENGTH_SHORT).show()
+        if (observationId != null) {
+            database.child("observations").child(observationId).setValue(observation)
+                .addOnSuccessListener {
+                    Toast.makeText(this, "Observation saved!", Toast.LENGTH_SHORT).show()
                 }
-            } catch (e: Exception) {
-                // Handle database insertion error
-                Log.e("Database Error", "Error inserting observation: ${e.message}")
-            }
+                .addOnFailureListener { e ->
+                    Log.e("FirebaseError", "Failed to save observation: ${e.message}")
+                    Toast.makeText(this, "Failed to save observation: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+        }else {
+            Toast.makeText(this, "Failed to generate observation ID", Toast.LENGTH_SHORT).show()
         }
 
     }
@@ -174,8 +251,8 @@ class Hotspots : AppCompatActivity(), OnMapReadyCallback {
 
         fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
             if (location != null) {
-                val currentLocation = LatLng(location.latitude, location.longitude)
-                fetchAndDisplayHotspots(currentLocation)  // Fetch hotspots around the user's real location
+                 currentLocation = LatLng(location.latitude, location.longitude)
+                fetchAndDisplayHotspots(currentLocation!!)  // Fetch hotspots around the user's real location
             } else {
                 // Handle if the location is null (e.g., location not available)
                 Toast.makeText(
@@ -223,9 +300,8 @@ class Hotspots : AppCompatActivity(), OnMapReadyCallback {
 
     override fun onMapReady(map: GoogleMap) {
         googleMap = map
-        enableLocation()
 
-        val currentLocation = LatLng(-34.0, 151.0)
+        val currentLocation = LatLng(37.7749, -122.4194)
         fetchAndDisplayHotspots(currentLocation)
     }
 
@@ -291,22 +367,6 @@ class Hotspots : AppCompatActivity(), OnMapReadyCallback {
         googleMap.isMyLocationEnabled = true
     }
 
-
-    // Handle permission request result
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        when (requestCode) {
-            LOCATION_PERMISSION_REQUEST_CODE -> {
-                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    enableLocation()
-                }
-            }
-        }
-    }
 
     override fun onStart() {
         super.onStart()

@@ -10,5 +10,8 @@ interface BirdObservations {
     suspend fun insertObservation(observation: BirdObservation): Long
 
     @Query("SELECT * FROM BirdObservation")
-    suspend fun getAllObservations(): List<BirdObservation>
+    suspend fun fetchObservations(): List<BirdObservation>
 }
+
+
+
